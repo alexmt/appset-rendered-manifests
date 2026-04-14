@@ -22,9 +22,9 @@ jobs:
 
       - name: Install ArgoCD CLI
         run: |
-          curl -sSL -o argocd https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
-          chmod +x argocd
-          sudo mv argocd /usr/local/bin/argocd
+          curl -sSL -L -o /tmp/argocd https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
+          chmod +x /tmp/argocd
+          sudo mv /tmp/argocd /usr/local/bin/argocd
 
       - name: Render Application manifests
         run: |
