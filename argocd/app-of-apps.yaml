@@ -10,7 +10,7 @@ spec:
   source:
     # Points to the rendered branch of this same repository.
     # Replace with your actual repo URL after forking.
-    repoURL: https://github.com/OWNER/appset-rendered-manifests.git
+    repoURL: https://github.com/alexmt/appset-rendered-manifests.git
     targetRevision: rendered
     path: .
     directory:

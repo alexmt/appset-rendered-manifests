@@ -18,7 +18,7 @@ spec:
                   url: https://cluster-2.example.com
           # Generator 2: discover apps from the apps/ directory
           - git:
-              repoURL: https://github.com/OWNER/appset-rendered-manifests.git
+              repoURL: https://github.com/alexmt/appset-rendered-manifests.git
               revision: main
               directories:
                 - path: apps/*
@@ -28,7 +28,7 @@ spec:
     spec:
       project: default
       source:
-        repoURL: https://github.com/OWNER/appset-rendered-manifests.git
+        repoURL: https://github.com/alexmt/appset-rendered-manifests.git
         targetRevision: main
         path: "{{.path.path}}"
       destination:
