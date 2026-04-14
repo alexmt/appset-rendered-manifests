@@ -1,0 +1,84 @@
+- apiVersion: argoproj.io/v1alpha1
+  kind: Application
+  metadata:
+    finalizers:
+    - resources-finalizer.argocd.argoproj.io
+    name: app-a-cluster-1
+  spec:
+    destination:
+      namespace: app-a
+      server: https://cluster-1.example.com
+    project: default
+    source:
+      path: apps/app-a
+      repoURL: https://github.com/alexmt/appset-rendered-manifests.git
+      targetRevision: main
+    syncPolicy:
+      automated:
+        prune: true
+        selfHeal: true
+      syncOptions:
+      - CreateNamespace=true
+- apiVersion: argoproj.io/v1alpha1
+  kind: Application
+  metadata:
+    finalizers:
+    - resources-finalizer.argocd.argoproj.io
+    name: app-b-cluster-1
+  spec:
+    destination:
+      namespace: app-b
+      server: https://cluster-1.example.com
+    project: default
+    source:
+      path: apps/app-b
+      repoURL: https://github.com/alexmt/appset-rendered-manifests.git
+      targetRevision: main
+    syncPolicy:
+      automated:
+        prune: true
+        selfHeal: true
+      syncOptions:
+      - CreateNamespace=true
+- apiVersion: argoproj.io/v1alpha1
+  kind: Application
+  metadata:
+    finalizers:
+    - resources-finalizer.argocd.argoproj.io
+    name: app-a-cluster-2
+  spec:
+    destination:
+      namespace: app-a
+      server: https://cluster-2.example.com
+    project: default
+    source:
+      path: apps/app-a
+      repoURL: https://github.com/alexmt/appset-rendered-manifests.git
+      targetRevision: main
+    syncPolicy:
+      automated:
+        prune: true
+        selfHeal: true
+      syncOptions:
+      - CreateNamespace=true
+- apiVersion: argoproj.io/v1alpha1
+  kind: Application
+  metadata:
+    finalizers:
+    - resources-finalizer.argocd.argoproj.io
+    name: app-b-cluster-2
+  spec:
+    destination:
+      namespace: app-b
+      server: https://cluster-2.example.com
+    project: default
+    source:
+      path: apps/app-b
+      repoURL: https://github.com/alexmt/appset-rendered-manifests.git
+      targetRevision: main
+    syncPolicy:
+      automated:
+        prune: true
+        selfHeal: true
+      syncOptions:
+      - CreateNamespace=true
