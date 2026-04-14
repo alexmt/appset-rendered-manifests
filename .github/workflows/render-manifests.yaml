@@ -27,8 +27,11 @@ jobs:
           sudo mv /tmp/argocd /usr/local/bin/argocd
 
       - name: Render Application manifests
+        env:
+          ARGOCD_SERVER: ${{ secrets.ARGOCD_SERVER }}
+          ARGOCD_AUTH_TOKEN: ${{ secrets.ARGOCD_AUTH_TOKEN }}
         run: |
-          argocd appset generate appset/appset.yaml -o yaml > /tmp/rendered-apps.yaml
+          argocd appset generate appset/appset.yaml --server "$ARGOCD_SERVER" --auth-token "$ARGOCD_AUTH_TOKEN" --grpc-web -o yaml > /tmp/rendered-apps.yaml
 
       - name: Push to rendered branch
         run: |
