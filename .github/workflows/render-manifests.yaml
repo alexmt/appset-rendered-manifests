@@ -1,0 +1,61 @@
+name: Render ApplicationSet Manifests
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "appset/**"
+      - "apps/**"
+
+permissions:
+  contents: write
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install ArgoCD CLI
+        run: |
+          curl -sSL -o argocd https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
+          chmod +x argocd
+          sudo mv argocd /usr/local/bin/argocd
+
+      - name: Render Application manifests
+        run: |
+          argocd appset generate appset/appset.yaml -o yaml > /tmp/rendered-apps.yaml
+
+      - name: Push to rendered branch
+        run: |
+          # Configure git
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Save the rendered output
+          cp /tmp/rendered-apps.yaml /tmp/apps.yaml
+
+          # Check if the rendered branch exists on the remote
+          if git ls-remote --exit-code --heads origin rendered >/dev/null 2>&1; then
+            git checkout rendered
+          else
+            # Create an orphan branch if it doesn't exist
+            git checkout --orphan rendered
+            git rm -rf .
+          fi
+
+          # Write rendered manifests
+          cp /tmp/apps.yaml apps.yaml
+
+          # Commit and push
+          git add apps.yaml
+          if git diff --cached --quiet; then
+            echo "No changes to rendered manifests, skipping commit."
+          else
+            git commit -m "Render Application manifests from main@${GITHUB_SHA::8}"
+            git push origin rendered
+          fi

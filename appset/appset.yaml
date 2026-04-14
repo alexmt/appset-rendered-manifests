@@ -1,0 +1,42 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: cluster-apps
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - matrix:
+        generators:
+          # Generator 1: list of target clusters
+          - list:
+              elements:
+                - cluster: cluster-1
+                  url: https://cluster-1.example.com
+                - cluster: cluster-2
+                  url: https://cluster-2.example.com
+          # Generator 2: discover apps from the apps/ directory
+          - git:
+              repoURL: https://github.com/OWNER/appset-rendered-manifests.git
+              revision: main
+              directories:
+                - path: apps/*
+  template:
+    metadata:
+      name: "{{.path.basename}}-{{.cluster}}"
+    spec:
+      project: default
+      source:
+        repoURL: https://github.com/OWNER/appset-rendered-manifests.git
+        targetRevision: main
+        path: "{{.path.path}}"
+      destination:
+        server: "{{.url}}"
+        namespace: "{{.path.basename}}"
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
