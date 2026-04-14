@@ -1,86 +1,66 @@
 # Taming Complex ApplicationSets with the Rendered Manifests Pattern
 
-ApplicationSet is one of the most powerful features in Argo CD. It enables platform administrators to automate Application management without writing code — just declarative YAML that generates Applications dynamically based on your environment.
+I've been working on Argo CD for a long time, and ApplicationSet is one of those features that keeps surprising me. The simple use cases are easy — point it at a Git repo and get an Application for every directory, or stamp out the same apps across every cluster. Most people start there and it works great.
 
-## What ApplicationSet Does Well
+But then reality kicks in.
 
-The simplest use cases are compelling on their own:
+## It Gets Complex Fast
 
-- **One app per directory**: point an ApplicationSet at a Git repository, and it creates an Application for every directory it discovers. Add a new microservice, get a new deployment automatically.
-- **Apps per cluster**: define a template, and every cluster registered in Argo CD gets the same set of applications. Onboard a new cluster, and it's fully configured within minutes.
+Take cluster addon management. You want a base set of addons on every cluster, but prod needs different resource limits than staging. And then there's that one snowflake cluster running GPU workloads that needs its own config.
 
-These patterns replace hundreds of lines of copy-pasted Application manifests with a single ApplicationSet definition.
+I put together [argocd-core-cluster-management](https://github.com/alexmt/argocd-core-cluster-management) a while back to show how you can handle this with ApplicationSet — layered directories, matrix generators, merge generators, cluster groups, the works. It's a clean setup and it works well.
 
-## When Things Get Complex
+But here's the thing: the ApplicationSet definition that makes it all work is not simple. It's got matrix generators nested with git generators, label selectors, Go templates. And this thing is managing your core infrastructure — addons, monitoring, networking across your entire fleet.
 
-Real-world infrastructure rarely fits into simple patterns. Consider cluster addon management: you need a base set of addons deployed to every cluster, but production clusters need different resource limits than staging. Some clusters are "snowflakes" — they run specialized workloads that require unique configurations.
+## The Uncomfortable Part
 
-A project like [argocd-core-cluster-management](https://github.com/alexmt/argocd-core-cluster-management) demonstrates how to solve this with ApplicationSet. It uses a layered directory structure with matrix and merge generators to handle:
+Complex + critical = scary. I've seen this pattern play out:
 
-- **Base addons** deployed to all clusters (Traefik, Grafana, monitoring)
-- **Cluster groups** for environment-specific overrides (prod, stage, test)
-- **Snowflake clusters** with per-cluster customizations
+- Someone updates a generator template
+- PR review looks reasonable — the YAML diff makes sense
+- It gets merged
+- Turns out it matched clusters it wasn't supposed to
+- Now every prod cluster is getting a config it shouldn't have
 
-The result is elegant — but the ApplicationSet definition that drives it is not trivial. It combines multiple generators, relies on cluster labels for targeting, and a single misconfiguration can affect every cluster in your fleet.
+The problem is you're reviewing the *template*, not the *output*. You can't tell from a generator diff what Applications will actually be created. You're trusting the template logic, and template logic is where bugs hide.
 
-## The Problem: Complexity Meets Critical Infrastructure
+## What If You Could See the Output First?
 
-This is where things get uncomfortable. ApplicationSets that manage cluster addons or core infrastructure are both:
+This is what I've been calling the "rendered manifests" pattern. The idea is simple:
 
-1. **Complex** — matrix generators, merge generators, Go templating, label selectors, multiple git directories
-2. **Critical** — a bad template can roll out a broken configuration to every production cluster simultaneously
-
-That's not a great combination. A typo in a generator template or an unintended label match can cause cascading failures across your entire fleet. And because ApplicationSet evaluates dynamically, you don't see the generated Applications until they're already being synced.
-
-Traditional pull request reviews help, but reviewing an ApplicationSet diff doesn't tell you *what Applications will actually be generated*. You're reviewing the template, not the output.
-
-## The Rendered Manifests Pattern
-
-What if you could review the actual generated Applications before they reach your clusters?
-
-The rendered manifests pattern separates ApplicationSet evaluation from deployment:
-
-1. **Define** your ApplicationSet as usual — generators, templates, all the complexity you need
-2. **Render** the ApplicationSet in CI using `argocd appset generate`, producing concrete Application manifests
-3. **Store** the rendered manifests in a dedicated Git branch (e.g., `rendered`)
-4. **Deploy** using a simple app-of-apps that reads from the `rendered` branch
+1. Write your ApplicationSet as usual — go wild with generators
+2. In CI, run `argocd appset generate` to render the actual Application manifests
+3. Push those rendered manifests to a separate git branch
+4. Have a plain app-of-apps sync from that branch
 
 ```
-┌─────────────┐     ┌──────────────┐     ┌─────────────────┐     ┌──────────────┐
-│  Edit AppSet │────▶│  CI Pipeline  │────▶│ rendered branch │────▶│ app-of-apps  │
-│  on main     │     │  appset       │     │ (concrete apps) │     │ syncs to     │
-│              │     │  generate     │     │                 │     │ cluster      │
-└─────────────┘     └──────────────┘     └─────────────────┘     └──────────────┘
+ Edit AppSet  →  CI renders  →  rendered branch  →  app-of-apps syncs
+ (on main)       concrete        (reviewable!)       to cluster
+                 Applications
 ```
 
-### What This Gives You
+Now when someone changes the ApplicationSet, CI regenerates everything, and you get a diff of the *actual Applications* that will exist. Not the template — the output. You can see "oh, this change adds an Application to cluster-7 that shouldn't be there" before it ever touches your cluster.
 
-**Reviewable output.** When someone changes the ApplicationSet template or the app manifests, the CI pipeline regenerates the concrete Applications. The pull request to the `rendered` branch shows you exactly which Applications will be created, modified, or deleted. No more guessing what a generator change will produce.
+## What You Get
 
-**Git history of generated state.** Every change to the rendered branch is a commit with a clear diff. You can trace exactly when an Application was added or modified, and correlate it back to the source change on `main`.
+**You can actually review what's changing.** The PR to the rendered branch shows concrete Application specs. No mental template evaluation required.
 
-**No ApplicationSet controller in the cluster.** The cluster only sees plain Application resources from the `rendered` branch. This reduces the attack surface and eliminates a class of runtime errors where the ApplicationSet controller misinterprets a template or encounters a transient API error during generation.
+**Git history of your generated state.** Every rendered commit is traceable back to the source change. When something breaks, `git log` on the rendered branch tells you exactly what changed and when.
 
-**Safe rollback.** If a rendered change causes problems, revert the commit on the `rendered` branch. The app-of-apps will sync back to the previous state immediately.
+**No ApplicationSet controller needed in the cluster.** The cluster just sees plain Applications. One less thing running, one less thing to break.
 
-### The Trade-off
+**Easy rollback.** Revert a commit on the rendered branch and the app-of-apps syncs back. Done.
 
-You lose real-time dynamic generation. If a new cluster is added, the CI pipeline needs to run before Applications are created for it. For most teams managing infrastructure at scale, this is a feature, not a bug — you want changes to go through CI, not happen automatically in the background.
+## The Trade-off
 
-## Try It
+You lose the "automatic" part of ApplicationSet — if you add a new cluster, you need to run the CI pipeline before it gets its apps. Honestly, for anything managing critical infrastructure, I think that's a good thing. You *want* a CI gate there.
 
-We've published a complete working example at [alexmt/appset-rendered-manifests](https://github.com/alexmt/appset-rendered-manifests). It includes:
+## Try It Out
 
-- A Kustomize-based Argo CD installation
-- An ApplicationSet with a matrix generator (clusters × apps)
-- Sample applications
-- A GitHub Actions workflow that renders and pushes to an orphan branch
-- An app-of-apps that deploys from the rendered branch
+I put together a working example: [alexmt/appset-rendered-manifests](https://github.com/alexmt/appset-rendered-manifests)
 
-Clone it, swap in your own clusters and apps, and you have a production-ready setup for managing complex ApplicationSets safely.
+It's got everything wired up — Kustomize-based Argo CD install, an ApplicationSet with a matrix generator, sample apps, a GitHub Actions workflow that renders to an orphan branch, and the app-of-apps that ties it together. Fork it and swap in your own stuff.
 
-## Conclusion
-
-ApplicationSet is incredibly powerful — powerful enough to manage your entire fleet's infrastructure from a single definition. But with that power comes risk. The rendered manifests pattern gives you a safety net: full visibility into what will be deployed, a reviewable Git history, and the confidence that what you see in the PR is exactly what reaches your clusters.
+If you've been burned by an ApplicationSet change that did more than you expected — or you're just nervous about it happening — give this a try. It's a small amount of extra setup for a lot more confidence.
 
 Stop reviewing templates. Start reviewing output.
