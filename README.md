@@ -81,28 +81,20 @@ kubectl apply -k argocd/
 This installs ArgoCD and creates the app-of-apps Application that watches the
 `rendered` branch.
 
-### 2. Bootstrap the Rendered Branch
+### 2. Configure Repository Secrets
 
-On first setup, you need to create the orphaned `rendered` branch. You can do
-this manually or let the GitHub Action create it on the first push to `main`.
+The GitHub Action needs access to an ArgoCD instance to render the ApplicationSet.
+Add these secrets in your repo settings (Settings → Secrets and variables → Actions):
 
-To create it manually:
-
-```bash
-git checkout --orphan rendered
-git rm -rf .
-echo "# Rendered Application Manifests" > README.md
-git add README.md
-git commit -m "Initialize rendered branch"
-git push origin rendered
-git checkout main
-```
+- **`ARGOCD_SERVER`** — your ArgoCD server address (e.g., `argocd.example.com`)
+- **`ARGOCD_AUTH_TOKEN`** — an ArgoCD API token with read access
 
 ### 3. Push to Trigger Rendering
 
 Push any change to `appset/` or `apps/` on the `main` branch. The GitHub Action
-will render the Application manifests and push them to the `rendered` branch.
-ArgoCD will then pick up the changes automatically.
+will render the Application manifests and push them to the `rendered` branch
+(creating it automatically if it doesn't exist). ArgoCD will then pick up the
+changes automatically.
 
 ### 4. Verify
 
